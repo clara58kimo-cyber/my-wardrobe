@@ -2,6 +2,7 @@ import sqlite3
 import os
 from datetime import datetime
 import streamlit as st
+from PIL import Image
 
 # 設定網頁版面配置與標題
 st.set_page_config(page_title="Clara 的質感衣櫃", page_icon="👗", layout="wide")
@@ -26,6 +27,32 @@ def init_db():
 init_db()
 os.makedirs("uploads", exist_ok=True)
 
+# 圖片自動壓縮與儲存函式
+def save_and_resize_image(image_file):
+    try:
+        # 使用 Pillow 開啟上傳的圖片
+        img = Image.open(image_file)
+        
+        # 調整圖片模式（避免透明背景 PNG 轉存時出錯）
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+            
+        # 設定最大寬高限制（例如最長邊 1000 像素），自動等比例縮放
+        img.thumbnail((1000, 1000))
+        
+        # 產生唯一檔名
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        file_name = getattr(image_file, 'name', 'cam.jpg')
+        base_name = os.path.splitext(file_name)[0]
+        image_path = os.path.join("uploads", f"{timestamp}_{base_name}.jpg")
+        
+        # 儲存並進行品質壓縮 (quality=85 可以大幅減小檔案又不失真)
+        img.save(image_path, "JPEG", quality=85)
+        return image_path
+    except Exception as e:
+        st.error(f"圖片處理失敗：{e}")
+        return None
+
 st.title("👗 Clara 的質感服裝搭配資料庫")
 st.markdown("打造專屬你的美學衣櫃，輕鬆管理與搭配每一套穿搭！")
 
@@ -47,21 +74,18 @@ with tab1:
     image_file = st.file_uploader("選擇圖片檔案", type=["jpg", "jpeg", "png"]) if upload_option == "上傳本地照片" else st.camera_input("使用相機拍攝")
 
     if image_file is not None:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        file_name = getattr(image_file, 'name', 'cam.jpg')
-        image_path = os.path.join("uploads", f"{timestamp}_{file_name}")
-        
-        with open(image_path, "wb") as f:
-            f.write(image_file.getbuffer())
-        
         if st.button("確認儲存至衣櫃", type="primary"):
-            conn = sqlite3.connect('wardrobe.db')
-            c = conn.cursor()
-            c.execute("INSERT INTO clothing (category, style, season, image_path, created_at) VALUES (?, ?, ?, ?, ?)",
-                      (category, style, season, image_path, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-            conn.commit()
-            conn.close()
-            st.success("✨ 成功將衣物加入你的質感資料庫！")
+            # 呼叫壓縮與儲存函式
+            image_path = save_and_resize_image(image_file)
+            
+            if image_path:
+                conn = sqlite3.connect('wardrobe.db')
+                c = conn.cursor()
+                c.execute("INSERT INTO clothing (category, style, season, image_path, created_at) VALUES (?, ?, ?, ?, ?)",
+                          (category, style, season, image_path, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                conn.commit()
+                conn.close()
+                st.success("✨ 成功將衣物加入你的質感資料庫（已自動優化圖片大小）！")
 
 # --- 標籤頁二：衣櫃總覽 ---
 with tab2:
@@ -74,7 +98,6 @@ with tab2:
     conn.close()
 
     if items:
-        # 篩選器
         filter_style = st.selectbox("依風格篩選檢視", ["全部風格", "休閒 (Casual)", "正式 (Formal)", "法式簡約 (Minimalist)", "甜美復古 (Vintage)"])
         
         filtered_items = items if filter_style == "全部風格" else [item for item in items if item[2] == filter_style]

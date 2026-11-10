@@ -107,7 +107,7 @@ with tab2:
             st.session_state.add_mode = 'single'
             st.rerun()
     with col_btn2:
-        if st.button("📸 上傳整套穿搭（自由裁切）", use_container_width=True, type="primary" if st.session_state.add_mode == 'set' else "secondary"):
+        if st.button("📸 整套穿搭獨立框選", use_container_width=True, type="primary" if st.session_state.add_mode == 'set' else "secondary"):
             st.session_state.add_mode = 'set'
             st.rerun()
 
@@ -140,30 +140,38 @@ with tab2:
                     st.success("✨ 成功將單件衣物加入你的質感資料庫！")
 
     else:
-        st.markdown("### 【整套穿搭照自由裁切模式】")
-        st.info("💡 請上傳整套照片，並透過下方拉霸調整裁切線，自由決定上身與下身的範圍！")
+        st.markdown("### 【整套穿搭獨立框選模式】")
+        st.info("💡 請上傳整套照片，並分別調整上身與下身的垂直範圍，讓截取更精準！")
         outfit_file = st.file_uploader("選擇整套穿搭照片", type=["jpg", "jpeg", "png"])
         
         if outfit_file is not None:
             img = Image.open(outfit_file)
             width, height = img.size
             
-            # 讓使用者自由調整切分點的高度百分比 (預設 50%)
-            split_ratio = st.slider("調整上身與下身的分界線位置 (%)", min_value=20, max_value=80, value=50, step=5)
-            split_y = int(height * (split_ratio / 100))
+            st.markdown("#### 1️⃣ 框選【上身】範圍")
+            top_start, top_end = st.slider("上身高度範圍 (%)", min_value=0, max_value=100, value=(0, 45), step=2)
+            
+            st.markdown("#### 2️⃣ 框選【下身】範圍")
+            bottom_start, bottom_end = st.slider("下身高度範圍 (%)", min_value=0, max_value=100, value=(45, 100), step=2)
+            
+            # 計算實際像素位置
+            top_y1 = int(height * (top_start / 100))
+            top_y2 = int(height * (top_end / 100))
+            bot_y1 = int(height * (bottom_start / 100))
+            bot_y2 = int(height * (bottom_end / 100))
             
             st.markdown("### 截圖預覽")
             col_prev1, col_prev2 = st.columns(2)
             
-            top_img = img.crop((0, 0, width, split_y))
-            bottom_img = img.crop((0, split_y, width, height))
+            top_img = img.crop((0, top_y1, width, top_y2))
+            bottom_img = img.crop((0, bot_y1, width, bot_y2))
             
             with col_prev1:
-                st.image(top_img, caption=f"上身預覽 (佔 {split_ratio}%)", use_container_width=True)
+                st.image(top_img, caption="上身預覽畫面", use_container_width=True)
             with col_prev2:
-                st.image(bottom_img, caption=f"下身預覽 (佔 {100-split_ratio}%)", use_container_width=True)
+                st.image(bottom_img, caption="下身預覽畫面", use_container_width=True)
             
-            if st.button("確認裁切並同時存入衣櫃", type="primary", use_container_width=True):
+            if st.button("確認框選並同時存入衣櫃", type="primary", use_container_width=True):
                 top_path = save_and_resize_image(top_img, suffix="top")
                 bottom_path = save_and_resize_image(bottom_img, suffix="bottom")
                 
@@ -176,7 +184,7 @@ with tab2:
                               ("下身 (Bottoms)", style, season, bottom_path, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
                     conn.commit()
                     conn.close()
-                    st.success("✨ 成功將整套穿搭依自訂比例切分為上身與下身，並存入衣櫃！")
+                    st.success("✨ 成功將獨立框選的上身與下身存入衣櫃！")
 
 # --- 標籤頁三：衣櫃總覽與刪除功能 ---
 with tab3:
@@ -201,10 +209,9 @@ with tab3:
                     st.markdown(f"**分類：** {cat}")
                     st.markdown(f"**風格：** {sty} | **季節：** {sea}")
                     
-                    # 刪除按鈕
                     if st.button(f"🗑️ 刪除此單品 #{item_id}", key=f"del_{item_id}"):
                         try:
-                            os.remove(img_path) # 刪除實體圖片檔案
+                            os.remove(img_path)
                         except:
                             pass
                         conn = sqlite3.connect('wardrobe.db')

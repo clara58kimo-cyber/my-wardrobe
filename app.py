@@ -4,7 +4,6 @@ from datetime import datetime
 import streamlit as st
 from PIL import Image
 import random
-from streamlit_drawable_canvas import st_canvas
 
 # 設定網頁版面配置與標題
 st.set_page_config(page_title="Clara 的質感衣櫃", page_icon="👗", layout="wide")
@@ -108,7 +107,7 @@ with tab2:
             st.session_state.add_mode = 'single'
             st.rerun()
     with col_btn2:
-        if st.button("📸 照片直接框選裁切", use_container_width=True, type="primary" if st.session_state.add_mode == 'set' else "secondary"):
+        if st.button("📱 手機觸控友善裁切", use_container_width=True, type="primary" if st.session_state.add_mode == 'set' else "secondary"):
             st.session_state.add_mode = 'set'
             st.rerun()
 
@@ -141,64 +140,46 @@ with tab2:
                     st.success("✨ 成功將單件衣物加入你的質感資料庫！")
 
     else:
-        st.markdown("### 【照片直接框選裁切模式】")
-        st.info("💡 請上傳照片，並在畫面上用滑鼠直接拖曳方框來框選妳要的區域！")
-        crop_file = st.file_uploader("選擇穿搭照片", type=["jpg", "jpeg", "png"], key="crop_uploader")
+        st.markdown("### 【手機觸控友善裁切模式】")
+        st.info("💡 請上傳整套穿搭照，並透過手機滑動調整上下衣物的裁切範圍，畫面會即時呈現預覽結果！")
+        crop_file = st.file_uploader("選擇穿搭照片", type=["jpg", "jpeg", "png"], key="mobile_crop")
         
         if crop_file is not None:
             img = Image.open(crop_file)
-            img_width, img_height = img.size
+            width, height = img.size
             
-            canvas_width = 400
-            canvas_height = int(canvas_width * (img_height / img_width))
+            st.markdown("#### 👕 調整【上身】截取範圍")
+            top_range = st.slider("上身垂直區間 (%)", min_value=0, max_value=100, value=(0, 48), step=1, key="top_slider")
             
-            st.markdown("👉 **請在下方圖片上按住滑鼠左鍵拖曳，畫出一個方框來框選目標衣物：**")
+            top_y1 = int(height * (top_range[0] / 100))
+            top_y2 = int(height * (top_range[1] / 100))
+            top_img = img.crop((0, top_y1, width, top_y2))
+            st.image(top_img, caption="上身即時預覽", use_container_width=True)
             
-            canvas_result = st_canvas(
-                fill_color="rgba(255, 165, 0, 0.3)",
-                stroke_width=2,
-                stroke_color="#FF0000",
-                background_image=img,
-                update_streamlit=True,
-                height=canvas_height,
-                width=canvas_width,
-                drawing_mode="rect",
-                key="canvas",
-            )
+            st.markdown("---")
             
-            target_category = st.selectbox("這塊框選的區域屬於：", ["上身 (Tops)", "下身 (Bottoms)"])
+            st.markdown("#### 👖 調整【下身】截取範圍")
+            bottom_range = st.slider("下身垂直區間 (%)", min_value=0, max_value=100, value=(50, 100), step=1, key="bottom_slider")
             
-            if st.button("確認裁切並存入衣櫃", type="primary", use_container_width=True):
-                if canvas_result.json_data is not None and len(canvas_result.json_data["objects"]) > 0:
-                    obj = canvas_result.json_data["objects"][-1]
-                    left = obj["left"]
-                    top = obj["top"]
-                    width = obj["width"]
-                    height = obj["height"]
-                    
-                    scale_x = img_width / canvas_width
-                    scale_y = img_height / canvas_height
-                    
-                    box = (
-                        int(left * scale_x),
-                        int(top * scale_y),
-                        int((left + width) * scale_x),
-                        int((top + height) * scale_y)
-                    )
-                    
-                    cropped_img = img.crop(box)
-                    image_path = save_and_resize_image(cropped_img, suffix="crop")
-                    
-                    if image_path:
-                        conn = sqlite3.connect('wardrobe.db')
-                        c = conn.cursor()
-                        c.execute("INSERT INTO clothing (category, style, season, image_path, created_at) VALUES (?, ?, ?, ?, ?)",
-                                  (target_category, style, season, image_path, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-                        conn.commit()
-                        conn.close()
-                        st.success(f"✨ 成功將框選的區域存為【{target_category}】！")
-                else:
-                    st.warning("⚠️ 請先在圖片上用滑鼠拖曳畫出一個方框喔！")
+            bot_y1 = int(height * (bottom_range[0] / 100))
+            bot_y2 = int(height * (bottom_range[1] / 100))
+            bottom_img = img.crop((0, bot_y1, width, bot_y2))
+            st.image(bottom_img, caption="下身即時預覽", use_container_width=True)
+            
+            if st.button("確認裁切並同時存入衣櫃", type="primary", use_container_width=True):
+                top_path = save_and_resize_image(top_img, suffix="top")
+                bottom_path = save_and_resize_image(bottom_img, suffix="bottom")
+                
+                if top_path and bottom_path:
+                    conn = sqlite3.connect('wardrobe.db')
+                    c = conn.cursor()
+                    c.execute("INSERT INTO clothing (category, style, season, image_path, created_at) VALUES (?, ?, ?, ?, ?)",
+                              ("上身 (Tops)", style, season, top_path, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                    c.execute("INSERT INTO clothing (category, style, season, image_path, created_at) VALUES (?, ?, ?, ?, ?)",
+                              ("下身 (Bottoms)", style, season, bottom_path, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                    conn.commit()
+                    conn.close()
+                    st.success("✨ 成功將獨立調整的上身與下身存入衣櫃！")
 
 # --- 標籤頁三：衣櫃總覽與刪除功能 ---
 with tab3:

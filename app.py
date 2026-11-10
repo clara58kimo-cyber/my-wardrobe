@@ -48,7 +48,7 @@ def save_and_resize_image(img, suffix=""):
 st.title("👗 Clara 的質感服裝搭配資料庫")
 st.markdown("打造專屬你的美學衣櫃，以智慧風格邏輯為妳推薦質感穿搭！")
 
-# 建立分頁介面（主頁為智慧穿搭推薦）
+# 建立分頁介面（首頁為 AI 智慧穿搭推薦）
 tab1, tab2, tab3 = st.tabs(["🎨 AI 智慧穿搭靈感", "✨ 新增衣物", "📂 質感衣櫃總覽"])
 
 # --- 標籤頁一：AI 智慧穿搭靈感（主頁） ---
@@ -65,13 +65,9 @@ with tab1:
     conn.close()
 
     if tops and bottoms:
-        # 取得衣櫃中所有出現過的風格清單
         available_styles = list(set([item[1] for item in tops] + [item[1] for item in bottoms]))
-        
-        # 讓使用者選擇想要呈現的風格，或者由 AI 自動挑選一個有共鳴的風格
         selected_style = st.selectbox("🎯 選擇今日想要演繹的質感風格", available_styles)
         
-        # 嚴格篩選出符合該風格的上身與下身
         filtered_tops = [t for t in tops if t[1] == selected_style]
         filtered_bottoms = [b for b in bottoms if b[1] == selected_style]
         

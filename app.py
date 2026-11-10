@@ -8,6 +8,29 @@ import random
 # 設定網頁版面配置與標題
 st.set_page_config(page_title="Clara 的質感衣櫃", page_icon="👗", layout="wide")
 
+# 注入自定義 CSS 樣式，讓 Streamlit 呈現與 HTML 預覽一致的精緻質感
+st.markdown("""
+    <style>
+    /* 調整整體字型與背景微調 */
+    .main {
+        background-color: #f8f9fa;
+    }
+    /* 卡片區塊樣式 */
+    .wardrobe-card {
+        border: 1px solid #eee;
+        border-radius: 12px;
+        padding: 20px;
+        background: #ffffff;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+        margin-bottom: 20px;
+    }
+    /* 標題樣式 */
+    h1, h2, h3 {
+        color: #2c3e50;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 # 1. 初始化資料庫
 def init_db():
     conn = sqlite3.connect('wardrobe.db')
@@ -75,19 +98,23 @@ with tab1:
             ai_top = random.choice(filtered_tops)
             ai_bottom = random.choice(filtered_bottoms)
 
-            col_top, col_bottom = st.columns(2)
-            with col_top:
-                st.markdown(f"### 上身 (Top)")
-                if os.path.exists(ai_top[3]):
-                    st.image(ai_top[3], use_container_width=True)
-                    st.markdown(f"**風格:** {ai_top[1]} | **季節:** {ai_top[2]}")
-            with col_bottom:
-                st.markdown(f"### 下身 (Bottom)")
-                if os.path.exists(ai_bottom[3]):
-                    st.image(ai_bottom[3], use_container_width=True)
-                    st.markdown(f"**風格:** {ai_bottom[1]} | **季節:** {ai_bottom[2]}")
+            # 使用容器包裝，呈現卡片式美學
+            with st.container():
+                st.markdown('<div class="wardrobe-card">', unsafe_allow_html=True)
+                col_top, col_bottom = st.columns(2)
+                with col_top:
+                    st.markdown(f"### 👕 上身 (Top)")
+                    if os.path.exists(ai_top[3]):
+                        st.image(ai_top[3], use_container_width=True)
+                        st.markdown(f"**風格:** {ai_top[1]} | **季節:** {ai_top[2]}")
+                with col_bottom:
+                    st.markdown(f"### 👖 下身 (Bottom)")
+                    if os.path.exists(ai_bottom[3]):
+                        st.image(ai_bottom[3], use_container_width=True)
+                        st.markdown(f"**風格:** {ai_bottom[1]} | **季節:** {ai_bottom[2]}")
+                st.markdown('</div>', unsafe_allow_html=True)
             
-            if st.button("🔄 重新尋找此風格的靈感組合", type="primary"):
+            if st.button("🔄 重新尋找此風格的靈感組合", type="primary", use_container_width=True):
                 st.rerun()
         else:
             st.info(f"目前【{selected_style}】風格中，尚未同時擁有上身與下身單品，建議上傳更多單品來豐富此風格！")
@@ -103,11 +130,13 @@ with tab2:
 
     col_btn1, col_btn2 = st.columns(2)
     with col_btn1:
-        if st.button("👕 新增單件衣物", use_container_width=True):
+        if st.button("👕 新增單件衣物", use_container_width=True, type="secondary" if st.session_state.add_mode != 'single' else "primary"):
             st.session_state.add_mode = 'single'
+            st.rerun()
     with col_btn2:
-        if st.button("📸 上傳整套穿搭（自動切分）", use_container_width=True):
+        if st.button("📸 上傳整套穿搭（自動切分）", use_container_width=True, type="secondary" if st.session_state.add_mode != 'set' else "primary"):
             st.session_state.add_mode = 'set'
+            st.rerun()
 
     st.divider()
 
@@ -118,59 +147,65 @@ with tab2:
         season = st.selectbox("適用季節", ["春季 (Spring)", "夏季 (Summer)", "秋季 (Autumn)", "冬季 (Winter)", "四季通穿 (All-Season)"])
 
     if st.session_state.add_mode == 'single':
-        st.markdown("### 【單件衣物上傳模式】")
-        category = st.selectbox("服裝分類", ["上身 (Tops)", "下身 (Bottoms)"])
-        upload_option = st.radio("圖片來源", ["上傳本地照片", "現場拍照"])
-        image_file = st.file_uploader("選擇圖片檔案", type=["jpg", "jpeg", "png"]) if upload_option == "上傳本地照片" else st.camera_input("使用相機拍攝")
+        with st.container():
+            st.markdown('<div class="wardrobe-card">', unsafe_allow_html=True)
+            st.markdown("### 【單件衣物上傳模式】")
+            category = st.selectbox("服裝分類", ["上身 (Tops)", "下身 (Bottoms)"])
+            upload_option = st.radio("圖片來源", ["上傳本地照片", "現場拍照"])
+            image_file = st.file_uploader("選擇圖片檔案", type=["jpg", "jpeg", "png"]) if upload_option == "上傳本地照片" else st.camera_input("使用相機拍攝")
 
-        if image_file is not None:
-            if st.button("確認儲存單件衣物", type="primary"):
-                img = Image.open(image_file)
-                image_path = save_and_resize_image(img, suffix="single")
-                
-                if image_path:
-                    conn = sqlite3.connect('wardrobe.db')
-                    c = conn.cursor()
-                    c.execute("INSERT INTO clothing (category, style, season, image_path, created_at) VALUES (?, ?, ?, ?, ?)",
-                              (category, style, season, image_path, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-                    conn.commit()
-                    conn.close()
-                    st.success("✨ 成功將單件衣物加入你的質感資料庫！")
+            if image_file is not None:
+                if st.button("確認儲存單件衣物", type="primary", use_container_width=True):
+                    img = Image.open(image_file)
+                    image_path = save_and_resize_image(img, suffix="single")
+                    
+                    if image_path:
+                        conn = sqlite3.connect('wardrobe.db')
+                        c = conn.cursor()
+                        c.execute("INSERT INTO clothing (category, style, season, image_path, created_at) VALUES (?, ?, ?, ?, ?)",
+                                  (category, style, season, image_path, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                        conn.commit()
+                        conn.close()
+                        st.success("✨ 成功將單件衣物加入你的質感資料庫！")
+            st.markdown('</div>', unsafe_allow_html=True)
 
     else:
-        st.markdown("### 【整套穿搭照自動切分模式】")
-        st.info("💡 請上傳一張整套照片（上半身在上方、下半身在下方），系統會自動幫您切分為上身與下身並同時存入衣櫃！")
-        outfit_file = st.file_uploader("選擇整套穿搭照片", type=["jpg", "jpeg", "png"])
-        
-        if outfit_file is not None:
-            img = Image.open(outfit_file)
-            width, height = img.size
+        with st.container():
+            st.markdown('<div class="wardrobe-card">', unsafe_allow_html=True)
+            st.markdown("### 【整套穿搭照自動切分模式】")
+            st.info("💡 請上傳一張整套照片（上半身在上方、下半身在下方），系統會自動幫您切分為上身與下身並同時存入衣櫃！")
+            outfit_file = st.file_uploader("選擇整套穿搭照片", type=["jpg", "jpeg", "png"])
             
-            st.markdown("### 截圖預覽")
-            col_prev1, col_prev2 = st.columns(2)
-            
-            top_img = img.crop((0, 0, width, height // 2))
-            bottom_img = img.crop((0, height // 2, width, height))
-            
-            with col_prev1:
-                st.image(top_img, caption="自動切分之【上身】預覽", use_container_width=True)
-            with col_prev2:
-                st.image(bottom_img, caption="自動切分之【下身】預覽", use_container_width=True)
-            
-            if st.button("確認切分並同時存入衣櫃", type="primary"):
-                top_path = save_and_resize_image(top_img, suffix="top")
-                bottom_path = save_and_resize_image(bottom_img, suffix="bottom")
+            if outfit_file is not None:
+                img = Image.open(outfit_file)
+                width, height = img.size
                 
-                if top_path and bottom_path:
-                    conn = sqlite3.connect('wardrobe.db')
-                    c = conn.cursor()
-                    c.execute("INSERT INTO clothing (category, style, season, image_path, created_at) VALUES (?, ?, ?, ?, ?)",
-                              ("上身 (Tops)", style, season, top_path, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-                    c.execute("INSERT INTO clothing (category, style, season, image_path, created_at) VALUES (?, ?, ?, ?, ?)",
-                              ("下身 (Bottoms)", style, season, bottom_path, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-                    conn.commit()
-                    conn.close()
-                    st.success("✨ 成功將整套穿搭自動切分為上身與下身，並存入衣櫃！")
+                st.markdown("### 截圖預覽")
+                col_prev1, col_prev2 = st.columns(2)
+                
+                top_img = img.crop((0, 0, width, height // 2))
+                bottom_img = img.crop((0, height // 2, width, height))
+                
+                with col_prev1:
+                    st.image(top_img, caption="自動切分之【上身】預覽", use_container_width=True)
+                with col_prev2:
+                    st.image(bottom_img, caption="自動切分之【下身】預覽", use_container_width=True)
+                
+                if st.button("確認切分並同時存入衣櫃", type="primary", use_container_width=True):
+                    top_path = save_and_resize_image(top_img, suffix="top")
+                    bottom_path = save_and_resize_image(bottom_img, suffix="bottom")
+                    
+                    if top_path and bottom_path:
+                        conn = sqlite3.connect('wardrobe.db')
+                        c = conn.cursor()
+                        c.execute("INSERT INTO clothing (category, style, season, image_path, created_at) VALUES (?, ?, ?, ?, ?)",
+                                  ("上身 (Tops)", style, season, top_path, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                        c.execute("INSERT INTO clothing (category, style, season, image_path, created_at) VALUES (?, ?, ?, ?, ?)",
+                                  ("下身 (Bottoms)", style, season, bottom_path, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                        conn.commit()
+                        conn.close()
+                        st.success("✨ 成功將整套穿搭自動切分為上身與下身，並存入衣櫃！")
+            st.markdown('</div>', unsafe_allow_html=True)
 
 # --- 標籤頁三：衣櫃總覽 ---
 with tab3:
@@ -191,9 +226,11 @@ with tab3:
         for index, (item_id, cat, sty, sea, img_path) in enumerate(filtered_items):
             with cols[index % 3]:
                 if os.path.exists(img_path):
-                    st.image(img_path, use_container_width=True)
-                    st.markdown(f"**分類：** {cat}")
-                    st.markdown(f"**風格：** {sty} | **季節：** {sea}")
-                    st.divider()
+                    with st.container():
+                        st.markdown('<div class="wardrobe-card">', unsafe_allow_html=True)
+                        st.image(img_path, use_container_width=True)
+                        st.markdown(f"**分類：** {cat}")
+                        st.markdown(f"**風格：** {sty} | **季節：** {sea}")
+                        st.markdown('</div>', unsafe_allow_html=True)
     else:
         st.info("目前衣櫃還空空如也，快到第二頁新增衣服吧！")

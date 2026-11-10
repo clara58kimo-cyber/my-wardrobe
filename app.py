@@ -508,9 +508,11 @@ with tab_stats:
             st.markdown("##### 顏色分布")
             color_counts = {}
             for i in items:
-                if i.get("color"):
-                    color_counts[i["color"]] = color_counts.get(i["color"], 0) + 1
+                c = i.get("color") or "未設定"
+                color_counts[c] = color_counts.get(c, 0) + 1
             st.bar_chart(color_counts, horizontal=True, height=220, color="#8B6F4E")
+            if "未設定" in color_counts:
+                st.caption(f"有 {color_counts['未設定']} 件舊衣物還沒設定主色，可到「我的衣櫃」點「編輯」補上。")
 
         idle = [i for i in items if not i.get("last_worn")
                 or (today() - date.fromisoformat(i["last_worn"])).days > 60]

@@ -149,38 +149,33 @@ with tab2:
             img = Image.open(crop_file)
             img_width, img_height = img.size
             
-            # 設定畫布顯示的最大寬度，等比例計算高度
             canvas_width = 400
             canvas_height = int(canvas_width * (img_height / img_width))
             
             st.markdown("👉 **請在下方圖片上按住滑鼠左鍵拖曳，畫出一個方框來框選目標衣物：**")
             
-            # 呼叫 drawable canvas 讓使用者畫框
             canvas_result = st_canvas(
-                fill_color="rgba(255, 165, 0, 0.3)",  # 框選填滿顏色（半透明橘色）
+                fill_color="rgba(255, 165, 0, 0.3)",
                 stroke_width=2,
-                stroke_color="#FF0000",                 # 框線顏色（紅色）
+                stroke_color="#FF0000",
                 background_image=img,
                 update_streamlit=True,
                 height=canvas_height,
                 width=canvas_width,
-                drawing_mode="rect",                    // 限制只能畫矩形方框
+                drawing_mode="rect",
                 key="canvas",
             )
             
-            # 選擇要存成哪一個分類
             target_category = st.selectbox("這塊框選的區域屬於：", ["上身 (Tops)", "下身 (Bottoms)"])
             
             if st.button("確認裁切並存入衣櫃", type="primary", use_container_width=True):
                 if canvas_result.json_data is not None and len(canvas_result.json_data["objects"]) > 0:
-                    # 取得使用者畫的最後一個方框資訊
                     obj = canvas_result.json_data["objects"][-1]
                     left = obj["left"]
                     top = obj["top"]
                     width = obj["width"]
                     height = obj["height"]
                     
-                    # 將畫布上的座標換算回原始圖片的真實像素座標
                     scale_x = img_width / canvas_width
                     scale_y = img_height / canvas_height
                     
@@ -191,7 +186,6 @@ with tab2:
                         int((top + height) * scale_y)
                     )
                     
-                    # 執行裁切
                     cropped_img = img.crop(box)
                     image_path = save_and_resize_image(cropped_img, suffix="crop")
                     

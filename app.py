@@ -458,13 +458,21 @@ if tab_add.open is not False:  # 只繪製目前分頁，減少手機記憶體�
             st.warning("🔄 頁面剛剛重新載入了。手機在選照片時若記憶體不足，瀏覽器會重新整理頁面，"
                        "剛選的照片就會遺失——請再選一次。常發生的話，建議先關閉其他 App，"
                        "或改用「現場拍照」。")
+        saved_ids = st.session_state.setdefault("saved_file_ids", set())
+        if st.session_state.get("just_saved"):
+            st.success(f"✅ {st.session_state.pop('just_saved')}，可以直接再選下一張照片。")
         src = st.segmented_control("圖片來源", ["上傳照片", "現場拍照"], default="上傳照片", key="a_src")
+        # 上傳元件固定同一個 key，存檔後不重建（重建元件在部分 Android 手機上會造成第二次選照片沒反應），
+        # 改用 file_id 記錄哪些照片已經存過，存過的就不再處理
         if src == "現場拍照":
-            files = [f for f in [st.camera_input("拍攝衣物", key="a_cam")] if f]
+            raw = [f for f in [st.camera_input("拍攝衣物（存好後按「Clear photo」再拍下一件）", key="a_cam")] if f]
         else:
-            files = st.file_uploader("選擇圖片（可一次多張，同一批會套用相同設定）",
-                                     type=None, accept_multiple_files=True,  # 不限副檔名：手機才會開啟完整的相簿/相機選單，格式由程式驗證
-                                     key=f"a_up_{st.session_state.get('a_nonce', 0)}") or []
+            raw = st.file_uploader("選擇圖片（可一次多張，同一批會套用相同設定）",
+                                   type=None, accept_multiple_files=True,  # 不限副檔名：手機才會開啟完整的相簿/相機選單，格式由程式驗證
+                                   key="a_up") or []
+        files = [f for f in raw if f.file_id not in saved_ids]
+        if raw and not files:
+            st.caption("上方列出的照片都已存進衣櫃（可按 ✕ 移除），選擇新照片即可繼續新增。")
 
         if files:
             processed, failed = [], []
@@ -504,10 +512,11 @@ if tab_add.open is not False:  # 只繪製目前分頁，減少手機記憶體�
                     store.add_item({**row, "image_path": f"{key}.jpg", "thumb_path": f"{key}_t.jpg"})
                     prog.progress(n / len(files))
                 refresh()
-                st.session_state.a_nonce = st.session_state.get("a_nonce", 0) + 1
-                st.toast(f"已新增 {len(files)} 件衣物 ✨")
+                saved_ids.update(f.file_id for f, _, _ in processed)
+                st.session_state.a_nonce = st.session_state.get("a_nonce", 0) + 1  # 只重設下方表單
+                st.session_state.just_saved = f"已新增 {len(processed)} 件衣物到衣櫃"
                 st.rerun()
-        else:
+        elif not raw:
             st.info("💡 小技巧：平放或掛在素色背景前拍攝，顏色偵測與搭配效果最好。"
                     "照片會自動壓縮，手機原圖直接上傳即可（支援 iPhone HEIC）。\n\n"
                     "📱 若在手機選完照片卻沒出現，請改從「檔案 / Files」選取，或切換到「現場拍照」。")

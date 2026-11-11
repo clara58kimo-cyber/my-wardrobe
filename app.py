@@ -6,6 +6,17 @@ from datetime import date, timedelta, timezone, datetime
 import streamlit as st
 from PIL import Image, ImageOps
 
+try:  # iPhone 預設的 HEIC/HEIF 照片格式
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
+    HEIC_OK = True
+except Exception:
+    HEIC_OK = False
+
+UPLOAD_TYPES = ["jpg", "jpeg", "png", "webp", "heic", "heif"] if HEIC_OK else ["jpg", "jpeg", "png", "webp"]
+MAX_SIDE, THUMB_SIDE, QUALITY = 1000, 420, 82
+
 import matcher as M
 from storage import SQLiteStore, SupabaseStore, export_backup, import_backup
 
@@ -126,8 +137,16 @@ wear_log = load_wear_log(store.mode)
 # 圖片處理
 # ---------------------------------------------------------------------------
 def process_image(file) -> tuple[bytes, bytes]:
-    """修正手機照片方向、透明背景補白、壓縮，產生大圖與縮圖。"""
+    """自動壓縮：修正手機照片方向、透明背景補白、縮小到最長邊 1000px、轉存 JPEG，並產生縮圖。"""
+    try:
+        file.seek(0)
+    except Exception:
+        pass
     img = Image.open(file)
+    try:
+        img.draft("RGB", (MAX_SIDE * 2, MAX_SIDE * 2))  # JPEG 大圖先快速降解析度，省記憶體與時間
+    except Exception:
+        pass
     img = ImageOps.exif_transpose(img)
     if img.mode in ("RGBA", "LA", "P"):
         img = img.convert("RGBA")
@@ -144,7 +163,13 @@ def process_image(file) -> tuple[bytes, bytes]:
         im.save(buf, "JPEG", quality=q, optimize=True)
         return buf.getvalue()
 
-    return encode(img, 1000, 85), encode(img, 420, 80)
+    return encode(img, MAX_SIDE, QUALITY), encode(img, THUMB_SIDE, 78)
+
+
+@st.cache_data(max_entries=40, show_spinner=False)
+def process_cached(raw: bytes) -> tuple[bytes, bytes]:
+    """同一張照片只壓縮一次（調整表單時不會重複處理）。"""
+    return process_image(io.BytesIO(raw))
 
 
 def guess_color(file) -> str:
@@ -427,32 +452,44 @@ with tab_add:
         files = [f for f in [st.camera_input("拍攝衣物", key="a_cam")] if f]
     else:
         files = st.file_uploader("選擇圖片（可一次多張，同一批會套用相同設定）",
-                                 type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True,
+                                 type=None, accept_multiple_files=True,  # 不限副檔名：手機才會開啟完整的相簿/相機選單，格式由程式驗證
                                  key=f"a_up_{st.session_state.get('a_nonce', 0)}") or []
 
     if files:
-        prev = st.columns(min(len(files), 6))
-        for col, f in zip(prev, files[:6]):
-            col.image(f, width="stretch")
-        if len(files) > 6:
-            st.caption(f"…另外還有 {len(files) - 6} 張")
-        suggested = guess_color(files[0])
+        processed, failed = [], []
+        with st.spinner("自動壓縮照片中…"):
+            for f in files:
+                try:
+                    full, thumb = process_cached(f.getvalue())
+                    processed.append((f, full, thumb))
+                except Exception as e:
+                    failed.append(f"{getattr(f, 'name', '照片')}（支援 {'、'.join(t.upper() for t in UPLOAD_TYPES)}）")
+        for msg in failed:
+            st.error(f"無法讀取這張照片 — {msg}")
+        files = [p[0] for p in processed]
+    if files:
+        prev = st.columns(6)
+        for col, (f, full, thumb) in zip(prev, processed[:6]):
+            col.image(thumb, width="stretch")
+        if len(processed) > 6:
+            st.caption(f"…另外還有 {len(processed) - 6} 張")
+        before = sum(getattr(f, "size", 0) for f, _, _ in processed)
+        after = sum(len(full) + len(thumb) for _, full, thumb in processed)
+        if before:
+            st.caption(f"🗜️ 已自動壓縮：{before / 1048576:.1f} MB → {after / 1048576:.2f} MB"
+                       f"（最長邊 {MAX_SIDE}px、JPEG 畫質 {QUALITY}）")
+        suggested = guess_color(io.BytesIO(processed[0][1]))
         st.caption(f"🎨 自動偵測主色：{suggested}（可在下方修改）")
         data = item_form(f"add_{st.session_state.get('a_nonce', 0)}", suggested_color=suggested)
         if st.button(f"✨ 儲存 {len(files)} 件到衣櫃", type="primary"):
             prog = st.progress(0.0)
-            for n, f in enumerate(files, 1):
-                try:
-                    full, thumb = process_image(f)
-                except Exception as e:
-                    st.error(f"{getattr(f, 'name', '照片')} 處理失敗：{e}")
-                    continue
+            for n, (f, full, thumb) in enumerate(processed, 1):
                 key = f"{today():%Y%m}/{uuid.uuid4().hex[:12]}"
                 store.put_image(f"{key}.jpg", full)
                 store.put_image(f"{key}_t.jpg", thumb)
                 row = dict(data)
                 if len(files) > 1 and n > 1 and data.get("color") == suggested:
-                    row["color"] = guess_color(f)  # 多張時每張各自偵測顏色
+                    row["color"] = guess_color(io.BytesIO(full))  # 多張時每張各自偵測顏色
                 store.add_item({**row, "image_path": f"{key}.jpg", "thumb_path": f"{key}_t.jpg"})
                 prog.progress(n / len(files))
             refresh()
@@ -460,7 +497,9 @@ with tab_add:
             st.toast(f"已新增 {len(files)} 件衣物 ✨")
             st.rerun()
     else:
-        st.info("💡 小技巧：平放或掛在素色背景前拍攝，顏色偵測與搭配效果最好。")
+        st.info("💡 小技巧：平放或掛在素色背景前拍攝，顏色偵測與搭配效果最好。"
+                "照片會自動壓縮，手機原圖直接上傳即可（支援 iPhone HEIC）。\n\n"
+                "📱 若在手機選完照片卻沒出現，請改從「檔案 / Files」選取，或切換到「現場拍照」。")
 
 # ---------------------------------------------------------------------------
 # ⭐ 收藏穿搭

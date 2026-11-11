@@ -8,3 +8,5 @@ font = "sans serif"
 
 [server]
 maxUploadSize = 200
+# 手機切到相簿時連線會暫時中斷；延長保留時間，避免回來時上傳的照片已被清掉
+disconnectedSessionTTL = 900

@@ -312,9 +312,13 @@ if store.mode == "local":
 if store_error:
     st.error(f"Supabase 連線失敗，已改用本機模式：{store_error}")
 
-tab_match, tab_closet, tab_add, tab_saved, tab_stats = st.tabs(
-    ["🎨 智慧搭配", "👚 我的衣櫃", "➕ 新增衣物", "⭐ 收藏穿搭", "⚙️ 統計與備份"]
-)
+# 手機選照片時，瀏覽器可能因記憶體不足把頁面重新載入；
+# 分頁綁定網址，重新載入後仍停在原本的分頁，並偵測這種情況提示使用者
+fresh_session = "booted" not in st.session_state
+st.session_state.booted = True
+TAB_LABELS = ["🎨 智慧搭配", "👚 我的衣櫃", "➕ 新增衣物", "⭐ 收藏穿搭", "⚙️ 統計與備份"]
+tab_match, tab_closet, tab_add, tab_saved, tab_stats = st.tabs(TAB_LABELS, key="page", bind="query-params")
+reloaded_on_add = fresh_session and st.session_state.get("page") == TAB_LABELS[2]
 
 # ---------------------------------------------------------------------------
 # 🎨 智慧搭配
@@ -447,6 +451,10 @@ with tab_closet:
 # ➕ 新增衣物
 # ---------------------------------------------------------------------------
 with tab_add:
+    if reloaded_on_add:
+        st.warning("🔄 頁面剛剛重新載入了。手機在選照片時若記憶體不足，瀏覽器會重新整理頁面，"
+                   "剛選的照片就會遺失——請再選一次。常發生的話，建議先關閉其他 App，"
+                   "或改用「現場拍照」。")
     src = st.segmented_control("圖片來源", ["上傳照片", "現場拍照"], default="上傳照片", key="a_src")
     if src == "現場拍照":
         files = [f for f in [st.camera_input("拍攝衣物", key="a_cam")] if f]

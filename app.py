@@ -467,9 +467,10 @@ if tab_add.open is not False:  # 只繪製目前分頁，減少手機記憶體�
         if src == "現場拍照":
             raw = [f for f in [st.camera_input("拍攝衣物（存好後按「Clear photo」再拍下一件）", key="a_cam")] if f]
         else:
-            raw = st.file_uploader("選擇圖片（可一次多張，同一批會套用相同設定）",
-                                   type=None, accept_multiple_files=True,  # 不限副檔名：手機才會開啟完整的相簿/相機選單，格式由程式驗證
-                                   key="a_up") or []
+            # accept="image/*" + 單張：Android 會開啟不離開頁面的「相片挑選器」，連線不會中斷（實機測試 5/5 成功）
+            one = st.file_uploader("選擇照片（一次一張，存好後直接選下一張）", type="image",
+                                   accept_multiple_files=False, key="a_up")
+            raw = [one] if one else []
         files = [f for f in raw if f.file_id not in saved_ids]
         if raw and not files:
             st.caption("上方列出的照片都已存進衣櫃（可按 ✕ 移除），選擇新照片即可繼續新增。")
@@ -519,7 +520,7 @@ if tab_add.open is not False:  # 只繪製目前分頁，減少手機記憶體�
         elif not raw:
             st.info("💡 小技巧：平放或掛在素色背景前拍攝，顏色偵測與搭配效果最好。"
                     "照片會自動壓縮，手機原圖直接上傳即可（支援 iPhone HEIC）。\n\n"
-                    "📱 若在手機選完照片卻沒出現，請改從「檔案 / Files」選取，或切換到「現場拍照」。")
+                    "📱 若在手機選完照片卻沒出現，請切換到「現場拍照」。")
 
 # ---------------------------------------------------------------------------
 # ⭐ 收藏穿搭
